@@ -1,0 +1,35 @@
+[project]
+name = "pyquiz-backend"
+version = "0.1.0"
+description = "Python Interview Quiz - Django Backend"
+requires-python = ">=3.12"
+dependencies = [
+    "django>=5.0.6",
+    "djangorestframework>=3.15.2",
+    "django-cors-headers>=4.4.0",
+    "google-generativeai>=0.7.2",
+    "python-dotenv>=1.0.1",
+    "gunicorn>=22.0.0",
+    "whitenoise>=6.7.0",
+    "psycopg2-binary>=2.9.9",
+    "dj-database-url>=2.2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.2.0",
+    "pytest-django>=4.8.0",
+    "ruff>=0.5.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+python_files = ["tests.py", "test_*.py"]

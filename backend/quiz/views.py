@@ -1,0 +1,163 @@
+import uuid
+from django.utils import timezone
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+
+from .models import Question, QuizSession, QuizAnswer, LeaderboardEntry
+from .serializers import QuestionSerializer, QuizSessionSerializer, LeaderboardEntrySerializer
+from .ai_service import generate_questions, evaluate_answer
+
+POINTS_MAP = {"easy": 10, "medium": 20, "hard": 30}
+
+
+class GenerateQuestionsView(APIView):
+    """POST /api/quiz/generate/ — Gemini로 문제 생성 후 DB 저장, 세션 반환"""
+
+    def post(self, request):
+        category = request.data.get("category", "basics")
+        difficulty = request.data.get("difficulty", "easy")
+        count = int(request.data.get("count", 5))
+
+        if count not in [5, 10, 15]:
+            return Response({"error": "count must be 5, 10, or 15"}, status=400)
+
+        try:
+            raw_questions = generate_questions(category, difficulty, count)
+        except Exception as e:
+            return Response({"error": f"AI 문제 생성 실패: {str(e)}"}, status=500)
+
+        questions = []
+        for q in raw_questions:
+            obj = Question.objects.create(
+                category=category,
+                difficulty=difficulty,
+                question_text=q["question_text"],
+                hint=q.get("hint", ""),
+                answer_key=q.get("answer_key", ""),
+                code_snippet=q.get("code_snippet") or None,
+            )
+            questions.append(obj)
+
+        session = QuizSession.objects.create(
+            session_key=str(uuid.uuid4()),
+            category=category,
+            difficulty=difficulty,
+            total_questions=len(questions),
+            max_score=len(questions) * POINTS_MAP.get(difficulty, 10),
+        )
+
+        return Response({
+            "session_key": session.session_key,
+            "questions": QuestionSerializer(questions, many=True).data,
+            "max_score": session.max_score,
+        }, status=201)
+
+
+class SubmitAnswerView(APIView):
+    """POST /api/quiz/answer/ — 답변 제출 → Gemini 평가"""
+
+    def post(self, request):
+        session_key = request.data.get("session_key")
+        question_id = request.data.get("question_id")
+        user_answer = request.data.get("user_answer", "").strip()
+
+        if not all([session_key, question_id, user_answer]):
+            return Response({"error": "session_key, question_id, user_answer 필요"}, status=400)
+
+        try:
+            session = QuizSession.objects.get(session_key=session_key)
+            question = Question.objects.get(id=question_id)
+        except (QuizSession.DoesNotExist, Question.DoesNotExist):
+            return Response({"error": "세션 또는 문제를 찾을 수 없습니다"}, status=404)
+
+        if session.completed:
+            return Response({"error": "이미 완료된 세션입니다"}, status=400)
+
+        try:
+            evaluation = evaluate_answer(
+                question_text=question.question_text,
+                answer_key=question.answer_key,
+                user_answer=user_answer,
+                difficulty=session.difficulty,
+            )
+        except Exception as e:
+            return Response({"error": f"AI 평가 실패: {str(e)}"}, status=500)
+
+        points = POINTS_MAP.get(session.difficulty, 10)
+        score_ratio = float(evaluation.get("score_ratio", 0))
+        score_earned = round(points * score_ratio)
+
+        answer = QuizAnswer.objects.create(
+            session=session,
+            question=question,
+            user_answer=user_answer,
+            result=evaluation.get("result", "incorrect"),
+            score_earned=score_earned,
+            ai_feedback=evaluation.get("feedback", ""),
+        )
+
+        session.score += score_earned
+        session.save()
+
+        return Response({
+            "result": answer.result,
+            "score_earned": score_earned,
+            "feedback": evaluation.get("feedback", ""),
+            "model_answer": evaluation.get("model_answer", ""),
+            "session_score": session.score,
+        })
+
+
+class CompleteSessionView(APIView):
+    """POST /api/quiz/complete/ — 퀴즈 완료 처리"""
+
+    def post(self, request):
+        session_key = request.data.get("session_key")
+        nickname = request.data.get("nickname", "").strip()
+
+        try:
+            session = QuizSession.objects.get(session_key=session_key)
+        except QuizSession.DoesNotExist:
+            return Response({"error": "세션을 찾을 수 없습니다"}, status=404)
+
+        session.completed = True
+        session.completed_at = timezone.now()
+        session.save()
+
+        if nickname:
+            percentage = (session.score / session.max_score * 100) if session.max_score > 0 else 0
+            LeaderboardEntry.objects.create(
+                nickname=nickname,
+                category=session.category,
+                difficulty=session.difficulty,
+                score=session.score,
+                max_score=session.max_score,
+                percentage=round(percentage, 1),
+            )
+
+        return Response(QuizSessionSerializer(session).data)
+
+
+class LeaderboardView(APIView):
+    """GET /api/leaderboard/?category=&difficulty= — 리더보드 조회"""
+
+    def get(self, request):
+        queryset = LeaderboardEntry.objects.all()
+        category = request.query_params.get("category")
+        difficulty = request.query_params.get("difficulty")
+
+        if category:
+            queryset = queryset.filter(category=category)
+        if difficulty:
+            queryset = queryset.filter(difficulty=difficulty)
+
+        entries = queryset[:20]
+        return Response(LeaderboardEntrySerializer(entries, many=True).data)
+
+
+class HealthCheckView(APIView):
+    """GET /api/health/ — 서버 상태 확인"""
+
+    def get(self, request):
+        return Response({"status": "ok", "message": "PyQuiz API is running"})
