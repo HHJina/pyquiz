@@ -5,4 +5,4 @@ nixPkgs = ["python312", "uv"]
 cmds = ["uv sync --no-dev"]
 
 [start]
-cmd = "uv run gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2"
+cmd = ".venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2"
