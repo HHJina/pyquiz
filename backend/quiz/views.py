@@ -11,6 +11,38 @@ from .ai_service import generate_questions, evaluate_answer
 POINTS_MAP = {"easy": 10, "medium": 20, "hard": 30}
 
 
+def _keyword_evaluate(answer_key: str, user_answer: str) -> dict:
+    keywords = [k.strip() for k in answer_key.split("|||") if k.strip()]
+    if not keywords:
+        return {"result": "incorrect", "score_ratio": 0.0, "feedback": "채점 기준이 없습니다.", "model_answer": answer_key}
+
+    answer_lower = user_answer.lower()
+    matched = [k for k in keywords if k.lower() in answer_lower]
+    ratio = len(matched) / len(keywords)
+
+    if ratio >= 0.8:
+        result = "correct"
+    elif ratio >= 0.4:
+        result = "partial"
+    else:
+        result = "incorrect"
+
+    missed = [k for k in keywords if k not in matched]
+    feedback_parts = []
+    if matched:
+        feedback_parts.append(f"언급한 핵심 포인트: {', '.join(matched)}")
+    if missed:
+        feedback_parts.append(f"누락된 핵심 포인트: {', '.join(missed)}")
+    feedback_parts.append("(AI 평가 서비스 일시 불가 — 키워드 기반 채점이 적용되었습니다)")
+
+    return {
+        "result": result,
+        "score_ratio": round(ratio, 2),
+        "feedback": " | ".join(feedback_parts),
+        "model_answer": " | ".join(keywords),
+    }
+
+
 class GenerateQuestionsView(APIView):
     """POST /api/quiz/generate/ — Gemini로 문제 생성 후 DB 저장, 세션 반환"""
 
@@ -82,8 +114,8 @@ class SubmitAnswerView(APIView):
                 user_answer=user_answer,
                 difficulty=session.difficulty,
             )
-        except Exception as e:
-            return Response({"error": f"AI 평가 실패: {str(e)}"}, status=500)
+        except Exception:
+            evaluation = _keyword_evaluate(question.answer_key, user_answer)
 
         points = POINTS_MAP.get(session.difficulty, 10)
         score_ratio = float(evaluation.get("score_ratio", 0))
