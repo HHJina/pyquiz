@@ -1,4 +1,5 @@
 import uuid
+import random
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -35,6 +36,7 @@ class GenerateQuestionsView(APIView):
                 hint=q.get("hint", ""),
                 answer_key=q.get("answer_key", ""),
                 code_snippet=q.get("code_snippet") or None,
+                source="ai",
             )
             questions.append(obj)
 
@@ -153,6 +155,64 @@ class LeaderboardView(APIView):
 
         entries = queryset[:20]
         return Response(LeaderboardEntrySerializer(entries, many=True).data)
+
+
+class StartQuizFromDBView(APIView):
+    """POST /api/quiz/start/ — DB에 저장된 preset 문제로 퀴즈 시작"""
+
+    def post(self, request):
+        category = request.data.get("category", "basics")
+        difficulty = request.data.get("difficulty", "easy")
+        count = int(request.data.get("count", 5))
+
+        if count not in [5, 10, 15]:
+            return Response({"error": "count must be 5, 10, or 15"}, status=400)
+
+        questions = list(
+            Question.objects.filter(category=category, difficulty=difficulty, source="preset")
+        )
+
+        if len(questions) < count:
+            return Response(
+                {
+                    "error": f"DB에 문제가 부족합니다. "
+                             f"(카테고리: {category}, 난이도: {difficulty}, 현재: {len(questions)}개 / 필요: {count}개)"
+                },
+                status=400,
+            )
+
+        selected = random.sample(questions, count)
+
+        session = QuizSession.objects.create(
+            session_key=str(uuid.uuid4()),
+            category=category,
+            difficulty=difficulty,
+            total_questions=count,
+            max_score=count * POINTS_MAP.get(difficulty, 10),
+            mode="db",
+        )
+
+        return Response({
+            "session_key": session.session_key,
+            "questions": QuestionSerializer(selected, many=True).data,
+            "max_score": session.max_score,
+        }, status=201)
+
+
+class DBQuestionCountView(APIView):
+    """GET /api/quiz/db-count/?category=&difficulty= — DB 문제 수 조회"""
+
+    def get(self, request):
+        category = request.query_params.get("category")
+        difficulty = request.query_params.get("difficulty")
+
+        qs = Question.objects.filter(source="preset")
+        if category:
+            qs = qs.filter(category=category)
+        if difficulty:
+            qs = qs.filter(difficulty=difficulty)
+
+        return Response({"count": qs.count(), "category": category, "difficulty": difficulty})
 
 
 class HealthCheckView(APIView):

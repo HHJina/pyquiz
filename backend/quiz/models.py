@@ -7,6 +7,19 @@ CATEGORY_CHOICES = [
     ("algorithms", "자료구조/알고리즘"),
     ("advanced", "고급 Python"),
     ("practical", "실무/면접"),
+    ("docker", "Docker"),
+    ("git", "Git"),
+    ("mixed", "Python 전반"),
+]
+
+SOURCE_CHOICES = [
+    ("ai", "AI 생성"),
+    ("preset", "사전 등록"),
+]
+
+MODE_CHOICES = [
+    ("ai", "AI 생성"),
+    ("db", "DB 문제"),
 ]
 
 DIFFICULTY_CHOICES = [
@@ -23,6 +36,7 @@ class Question(models.Model):
     hint = models.TextField()
     answer_key = models.TextField(help_text="Comma-separated key points for evaluation")
     code_snippet = models.TextField(blank=True, null=True)
+    source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default="ai")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -40,6 +54,7 @@ class QuizSession(models.Model):
     score = models.IntegerField(default=0)
     max_score = models.IntegerField(default=0)
     completed = models.BooleanField(default=False)
+    mode = models.CharField(max_length=10, choices=MODE_CHOICES, default="ai")
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
