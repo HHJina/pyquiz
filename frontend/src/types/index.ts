@@ -1,6 +1,5 @@
 export type Category = "basics" | "oop" | "algorithms" | "advanced" | "practical" | "docker" | "git" | "mixed";
 export type Difficulty = "easy" | "medium" | "hard";
-export type QuizMode = "ai" | "db";
 export type QuizResult = "correct" | "partial" | "incorrect";
 
 export interface Question {
@@ -44,7 +43,6 @@ export interface QuizState {
   history: AnswerHistory[];
   category: Category;
   difficulty: Difficulty;
-  mode: QuizMode;
 }
 
 export interface LeaderboardEntry {

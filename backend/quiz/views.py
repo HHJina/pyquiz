@@ -6,7 +6,7 @@ from rest_framework.response import Response
 
 from .models import Question, QuizSession, QuizAnswer, LeaderboardEntry
 from .serializers import QuestionSerializer, QuizSessionSerializer, LeaderboardEntrySerializer
-from .ai_service import generate_questions, evaluate_answer
+from .ai_service import evaluate_answer
 
 POINTS_MAP = {"easy": 10, "medium": 20, "hard": 30}
 
@@ -53,49 +53,6 @@ def _keyword_evaluate(answer_key: str, user_answer: str) -> dict:
         "model_answer": " | ".join(keywords),
     }
 
-
-class GenerateQuestionsView(APIView):
-    """POST /api/quiz/generate/ — Gemini로 문제 생성 후 DB 저장, 세션 반환"""
-
-    def post(self, request):
-        category = request.data.get("category", "basics")
-        difficulty = request.data.get("difficulty", "easy")
-        count = int(request.data.get("count", 5))
-
-        if count not in [5, 10, 15]:
-            return Response({"error": "count must be 5, 10, or 15"}, status=400)
-
-        try:
-            raw_questions = generate_questions(category, difficulty, count)
-        except Exception as e:
-            return Response({"error": f"AI 문제 생성 실패: {str(e)}"}, status=500)
-
-        questions = []
-        for q in raw_questions:
-            obj = Question.objects.create(
-                category=category,
-                difficulty=difficulty,
-                question_text=q["question_text"],
-                hint=q.get("hint", ""),
-                answer_key=q.get("answer_key", ""),
-                code_snippet=q.get("code_snippet") or None,
-                source="ai",
-            )
-            questions.append(obj)
-
-        session = QuizSession.objects.create(
-            session_key=str(uuid.uuid4()),
-            category=category,
-            difficulty=difficulty,
-            total_questions=len(questions),
-            max_score=len(questions) * POINTS_MAP.get(difficulty, 10),
-        )
-
-        return Response({
-            "session_key": session.session_key,
-            "questions": QuestionSerializer(questions, many=True).data,
-            "max_score": session.max_score,
-        }, status=201)
 
 
 class SubmitAnswerView(APIView):

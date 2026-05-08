@@ -27,14 +27,6 @@ export async function getDBQuestionCount(
   return data.count;
 }
 
-export async function generateQuestions(
-  category: string,
-  difficulty: string,
-  count: number
-): Promise<GenerateResponse> {
-  const { data } = await api.post("/api/quiz/generate/", { category, difficulty, count });
-  return data;
-}
 
 export async function submitAnswer(
   session_key: string,

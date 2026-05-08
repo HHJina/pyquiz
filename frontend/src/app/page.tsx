@@ -4,11 +4,11 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
-import { generateQuestions, startQuizFromDB, getDBQuestionCount } from "@/lib/api";
+import { startQuizFromDB, getDBQuestionCount } from "@/lib/api";
 import { useQuizStore } from "@/lib/store";
 import { CATEGORY_META, DIFFICULTY_META } from "@/types";
-import type { Category, Difficulty, QuizMode } from "@/types";
-import { Trophy, Sparkles, Database, Loader2 } from "lucide-react";
+import type { Category, Difficulty } from "@/types";
+import { Trophy, Database, Loader2 } from "lucide-react";
 import clsx from "clsx";
 
 const COUNTS = [5, 10, 15];
@@ -17,7 +17,6 @@ export default function HomePage() {
   const router = useRouter();
   const setSession = useQuizStore((s) => s.setSession);
 
-  const [mode, setMode] = useState<QuizMode>("ai");
   const [category, setCategory] = useState<Category>("basics");
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [count, setCount] = useState(5);
@@ -25,48 +24,31 @@ export default function HomePage() {
   const [dbCount, setDbCount] = useState<number | null>(null);
   const [dbCountLoading, setDbCountLoading] = useState(false);
 
-  // DB 모드에서 카테고리/난이도 변경 시 문제 수 조회
   useEffect(() => {
-    if (mode !== "db") return;
     setDbCountLoading(true);
     getDBQuestionCount(category, difficulty)
       .then(setDbCount)
       .catch(() => setDbCount(null))
       .finally(() => setDbCountLoading(false));
-  }, [mode, category, difficulty]);
+  }, [category, difficulty]);
 
   async function handleStart() {
     setLoading(true);
-
-    if (mode === "db") {
-      const toastId = toast.loading("문제를 불러오는 중...");
-      try {
-        const data = await startQuizFromDB(category, difficulty, count);
-        setSession({ sessionKey: data.session_key, questions: data.questions, maxScore: data.max_score, category, difficulty, mode: "db" });
-        toast.success("퀴즈 시작!", { id: toastId });
-        router.push("/quiz");
-      } catch (err: unknown) {
-        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-        toast.error(msg ?? "문제를 불러오지 못했어요. 다시 시도해주세요.", { id: toastId });
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      const toastId = toast.loading("AI가 문제를 생성하고 있어요...");
-      try {
-        const data = await generateQuestions(category, difficulty, count);
-        setSession({ sessionKey: data.session_key, questions: data.questions, maxScore: data.max_score, category, difficulty, mode: "ai" });
-        toast.success("문제 생성 완료!", { id: toastId });
-        router.push("/quiz");
-      } catch {
-        toast.error("문제 생성에 실패했어요. 다시 시도해주세요.", { id: toastId });
-      } finally {
-        setLoading(false);
-      }
+    const toastId = toast.loading("문제를 불러오는 중...");
+    try {
+      const data = await startQuizFromDB(category, difficulty, count);
+      setSession({ sessionKey: data.session_key, questions: data.questions, maxScore: data.max_score, category, difficulty });
+      toast.success("퀴즈 시작!", { id: toastId });
+      router.push("/quiz");
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      toast.error(msg ?? "문제를 불러오지 못했어요. 다시 시도해주세요.", { id: toastId });
+    } finally {
+      setLoading(false);
     }
   }
 
-  const dbInsufficient = mode === "db" && dbCount !== null && dbCount < count;
+  const dbInsufficient = dbCount !== null && dbCount < count;
 
   return (
     <main className="min-h-screen bg-zinc-950 flex flex-col">
@@ -91,74 +73,25 @@ export default function HomePage() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-8"
+          className="text-center mb-10"
         >
+          <div className="flex items-center justify-center gap-2 mb-4">
+            <Database size={22} className="text-emerald-400" />
+            <span className="text-xs font-semibold text-emerald-400 uppercase tracking-widest">336문제 수록</span>
+          </div>
           <h1 className="text-4xl font-bold text-zinc-100 mb-3">
             Python 면접 <span className="text-python-yellow">완벽 대비</span>
           </h1>
-          <AnimatePresence mode="wait">
-            <motion.p
-              key={mode}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.2 }}
-              className="text-zinc-400 text-base"
-            >
-              {mode === "ai"
-                ? "Gemini AI가 실시간으로 문제를 생성하고, 당신의 답변을 평가해드려요."
-                : "사전 검수된 고품질 문제로 즉시 시작해 AI 평가까지 받아보세요."}
-            </motion.p>
-          </AnimatePresence>
-        </motion.div>
-
-        {/* Mode Toggle */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
-          className="mb-8"
-        >
-          <p className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">출제 방식</p>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={() => setMode("ai")}
-              className={clsx(
-                "card p-4 text-left transition-all duration-200 hover:border-zinc-600",
-                mode === "ai" ? "border-purple-500 bg-purple-950/40" : "border-zinc-800"
-              )}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <Sparkles size={18} className={mode === "ai" ? "text-purple-400" : "text-zinc-500"} />
-                <span className={clsx("font-semibold text-sm", mode === "ai" ? "text-purple-300" : "text-zinc-400")}>
-                  AI 생성
-                </span>
-              </div>
-              <p className="text-xs text-zinc-500">Gemini가 매번 새로운 문제를 만들어요</p>
-            </button>
-            <button
-              onClick={() => setMode("db")}
-              className={clsx(
-                "card p-4 text-left transition-all duration-200 hover:border-zinc-600",
-                mode === "db" ? "border-emerald-500 bg-emerald-950/40" : "border-zinc-800"
-              )}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <Database size={18} className={mode === "db" ? "text-emerald-400" : "text-zinc-500"} />
-                <span className={clsx("font-semibold text-sm", mode === "db" ? "text-emerald-300" : "text-zinc-400")}>
-                  DB 문제
-                </span>
-              </div>
-              <p className="text-xs text-zinc-500">검수된 336개 문제 중 랜덤 출제</p>
-            </button>
-          </div>
+          <p className="text-zinc-400 text-base">
+            검수된 문제로 즉시 시작하고, AI가 답변을 평가해드려요.
+          </p>
         </motion.div>
 
         {/* Category */}
         <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
+          transition={{ delay: 0.05 }}
           className="mb-8"
         >
           <p className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">카테고리</p>
@@ -169,9 +102,7 @@ export default function HomePage() {
                 onClick={() => setCategory(key)}
                 className={clsx(
                   "card p-3 text-left transition-all duration-200 hover:border-zinc-600",
-                  category === key
-                    ? "border-python-blue bg-python-blue/10"
-                    : "border-zinc-800"
+                  category === key ? "border-emerald-500 bg-emerald-950/30" : "border-zinc-800"
                 )}
               >
                 <div className="text-xl mb-1">{meta.icon}</div>
@@ -186,7 +117,7 @@ export default function HomePage() {
         <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
+          transition={{ delay: 0.1 }}
           className="mb-8"
         >
           <p className="text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">난이도</p>
@@ -197,7 +128,7 @@ export default function HomePage() {
                 onClick={() => setDifficulty(key)}
                 className={clsx(
                   "card p-4 text-center transition-all duration-200 hover:border-zinc-600",
-                  difficulty === key ? "border-python-blue bg-python-blue/10" : "border-zinc-800"
+                  difficulty === key ? "border-emerald-500 bg-emerald-950/30" : "border-zinc-800"
                 )}
               >
                 <div className={clsx("text-lg font-bold", meta.color)}>{meta.label}</div>
@@ -211,33 +142,31 @@ export default function HomePage() {
         <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
+          transition={{ delay: 0.15 }}
           className="mb-8"
         >
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs font-medium text-zinc-500 uppercase tracking-widest">문제 수</p>
-            {/* DB 모드 문제 수 표시 */}
             <AnimatePresence>
-              {mode === "db" && (
-                <motion.span
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className={clsx(
-                    "text-xs px-2 py-0.5 rounded-full font-medium",
-                    dbCountLoading ? "text-zinc-500" :
-                    dbCount === null ? "text-zinc-500" :
-                    dbInsufficient ? "bg-red-950 text-red-400 border border-red-800" :
-                    "bg-emerald-950 text-emerald-400 border border-emerald-800"
-                  )}
-                >
-                  {dbCountLoading
-                    ? "확인 중..."
-                    : dbCount === null
-                    ? "-"
-                    : `${CATEGORY_META[category].label} ${DIFFICULTY_META[difficulty].label} · ${dbCount}문제 보유`}
-                </motion.span>
-              )}
+              <motion.span
+                key={`${category}-${difficulty}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className={clsx(
+                  "text-xs px-2 py-0.5 rounded-full font-medium",
+                  dbCountLoading ? "text-zinc-500" :
+                  dbCount === null ? "text-zinc-500" :
+                  dbInsufficient ? "bg-red-950 text-red-400 border border-red-800" :
+                  "bg-emerald-950 text-emerald-400 border border-emerald-800"
+                )}
+              >
+                {dbCountLoading
+                  ? "확인 중..."
+                  : dbCount === null
+                  ? "-"
+                  : `${CATEGORY_META[category].label} ${DIFFICULTY_META[difficulty].label} · ${dbCount}문제 보유`}
+              </motion.span>
             </AnimatePresence>
           </div>
           <div className="grid grid-cols-3 gap-3">
@@ -245,12 +174,12 @@ export default function HomePage() {
               <button
                 key={c}
                 onClick={() => setCount(c)}
+                disabled={dbCount !== null && dbCount < c}
                 className={clsx(
                   "card p-4 text-center transition-all duration-200 hover:border-zinc-600",
-                  count === c ? "border-python-blue bg-python-blue/10" : "border-zinc-800",
-                  mode === "db" && dbCount !== null && dbCount < c && "opacity-40 cursor-not-allowed"
+                  count === c ? "border-emerald-500 bg-emerald-950/30" : "border-zinc-800",
+                  dbCount !== null && dbCount < c && "opacity-40 cursor-not-allowed"
                 )}
-                disabled={mode === "db" && dbCount !== null && dbCount < c}
               >
                 <div className="text-lg font-bold text-zinc-100">{c}문제</div>
                 <div className="text-xs text-zinc-500 mt-1">
@@ -274,30 +203,20 @@ export default function HomePage() {
         <motion.button
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
+          transition={{ delay: 0.2 }}
           onClick={handleStart}
           disabled={loading || dbInsufficient}
-          className={clsx(
-            "w-full text-base py-4 flex items-center justify-center gap-2 rounded-xl font-semibold transition-all",
-            mode === "ai"
-              ? "bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50"
-              : "bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50"
-          )}
+          className="w-full text-base py-4 flex items-center justify-center gap-2 rounded-xl font-semibold transition-all bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50"
         >
           {loading ? (
             <>
               <Loader2 size={18} className="animate-spin" />
-              {mode === "ai" ? "AI가 문제 생성 중..." : "문제 불러오는 중..."}
-            </>
-          ) : mode === "ai" ? (
-            <>
-              <Sparkles size={18} />
-              AI 문제 생성 후 시작
+              문제 불러오는 중...
             </>
           ) : (
             <>
               <Database size={18} />
-              즉시 시작
+              퀴즈 시작
             </>
           )}
         </motion.button>

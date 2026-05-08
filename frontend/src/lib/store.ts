@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { QuizState, Question, AnswerHistory, Category, Difficulty, QuizMode } from "@/types";
+import type { QuizState, Question, AnswerHistory, Category, Difficulty } from "@/types";
 
 interface QuizStore extends Partial<QuizState> {
   setSession: (data: {
@@ -8,7 +8,6 @@ interface QuizStore extends Partial<QuizState> {
     maxScore: number;
     category: Category;
     difficulty: Difficulty;
-    mode: QuizMode;
   }) => void;
   addAnswer: (answer: AnswerHistory, scoreEarned: number) => void;
   nextQuestion: () => void;
@@ -24,10 +23,9 @@ export const useQuizStore = create<QuizStore>((set) => ({
   history: [],
   category: undefined,
   difficulty: undefined,
-  mode: undefined,
 
-  setSession: ({ sessionKey, questions, maxScore, category, difficulty, mode }) =>
-    set({ sessionKey, questions, maxScore, category, difficulty, mode, currentIndex: 0, totalScore: 0, history: [] }),
+  setSession: ({ sessionKey, questions, maxScore, category, difficulty }) =>
+    set({ sessionKey, questions, maxScore, category, difficulty, currentIndex: 0, totalScore: 0, history: [] }),
 
   addAnswer: (answer, scoreEarned) =>
     set((s) => ({
@@ -48,6 +46,5 @@ export const useQuizStore = create<QuizStore>((set) => ({
       history: [],
       category: undefined,
       difficulty: undefined,
-      mode: undefined,
     }),
 }));
