@@ -2,7 +2,6 @@ import uuid
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
 
 from .models import Question, QuizSession, QuizAnswer, LeaderboardEntry
 from .serializers import QuestionSerializer, QuizSessionSerializer, LeaderboardEntrySerializer
