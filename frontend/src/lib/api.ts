@@ -31,9 +31,9 @@ export async function getDBQuestionCount(
 export async function submitAnswer(
   session_key: string,
   question_id: number,
-  user_answer: string
+  selected_index: number
 ): Promise<AnswerResponse> {
-  const { data } = await api.post("/api/quiz/answer/", { session_key, question_id, user_answer });
+  const { data } = await api.post("/api/quiz/answer/", { session_key, question_id, selected_index });
   return data;
 }
 

@@ -9,6 +9,8 @@ export interface Question {
   question_text: string;
   hint: string;
   code_snippet: string | null;
+  choices: string[];
+  correct_index: number;
 }
 
 export interface GenerateResponse {

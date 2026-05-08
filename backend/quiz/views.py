@@ -1,70 +1,57 @@
 import uuid
 import random
+import hashlib
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
 from .models import Question, QuizSession, QuizAnswer, LeaderboardEntry
-from .serializers import QuestionSerializer, QuizSessionSerializer, LeaderboardEntrySerializer
-from .ai_service import evaluate_answer
+from .serializers import QuizSessionSerializer, LeaderboardEntrySerializer
 
 POINTS_MAP = {"easy": 10, "medium": 20, "hard": 30}
 
 
-def _keyword_evaluate(answer_key: str, user_answer: str) -> dict:
-    import re
-    keywords = [k.strip() for k in answer_key.split("|||") if k.strip()]
-    if not keywords:
-        return {"result": "incorrect", "score_ratio": 0.0, "feedback": "채점 기준이 없습니다.", "model_answer": answer_key}
+def _answer_text(answer_key: str) -> str:
+    return " | ".join(k.strip() for k in answer_key.split("|||") if k.strip())
 
-    answer_lower = user_answer.lower()
 
-    def _keyword_hit(keyword: str) -> bool:
-        if keyword.lower() in answer_lower:
-            return True
-        tokens = [t for t in re.split(r"[\s,.()+\-/|:]+", keyword.lower()) if len(t) >= 2]
-        if not tokens:
-            return False
-        hits = sum(1 for t in tokens if t in answer_lower)
-        return hits / len(tokens) >= 0.5
+def _generate_choices(question: Question, difficulty: str, session_key: str) -> tuple[list[str], int]:
+    """Return (5 shuffled choices, correct_index) deterministically from session+question."""
+    correct_text = _answer_text(question.answer_key)
 
-    matched = [k for k in keywords if _keyword_hit(k)]
-    missed = [k for k in keywords if not _keyword_hit(k)]
-    ratio = len(matched) / len(keywords)
+    distractor_keys = list(
+        Question.objects.filter(difficulty=difficulty, source="preset")
+        .exclude(id=question.id)
+        .values_list("answer_key", flat=True)
+    )
 
-    if ratio >= 0.7:
-        result = "correct"
-    elif ratio >= 0.35:
-        result = "partial"
-    else:
-        result = "incorrect"
+    seed = int(hashlib.md5(f"{session_key}{question.id}".encode()).hexdigest(), 16) % (2 ** 32)
+    rng = random.Random(seed)
 
-    feedback_parts = []
-    if matched:
-        feedback_parts.append(f"언급한 핵심 포인트: {', '.join(matched)}")
-    if missed:
-        feedback_parts.append(f"보완할 포인트: {', '.join(missed)}")
-    feedback_parts.append("(AI 평가 서비스 일시 불가 — 키워드 기반 채점)")
+    sampled = rng.sample(distractor_keys, min(4, len(distractor_keys)))
+    distractors = [_answer_text(d) for d in sampled]
+    while len(distractors) < 4:
+        distractors.append("해당 없음")
 
-    return {
-        "result": result,
-        "score_ratio": round(ratio, 2),
-        "feedback": " | ".join(feedback_parts),
-        "model_answer": " | ".join(keywords),
-    }
+    choices = [correct_text] + distractors
+    indices = list(range(5))
+    rng.shuffle(indices)
+    shuffled = [choices[i] for i in indices]
+    correct_index = indices.index(0)
 
+    return shuffled, correct_index
 
 
 class SubmitAnswerView(APIView):
-    """POST /api/quiz/answer/ — 답변 제출 → Gemini 평가"""
+    """POST /api/quiz/answer/ — 객관식 답변 제출"""
 
     def post(self, request):
         session_key = request.data.get("session_key")
         question_id = request.data.get("question_id")
-        user_answer = request.data.get("user_answer", "").strip()
+        selected_index = request.data.get("selected_index")
 
-        if not all([session_key, question_id, user_answer]):
-            return Response({"error": "session_key, question_id, user_answer 필요"}, status=400)
+        if session_key is None or question_id is None or selected_index is None:
+            return Response({"error": "session_key, question_id, selected_index 필요"}, status=400)
 
         try:
             session = QuizSession.objects.get(session_key=session_key)
@@ -75,27 +62,22 @@ class SubmitAnswerView(APIView):
         if session.completed:
             return Response({"error": "이미 완료된 세션입니다"}, status=400)
 
-        try:
-            evaluation = evaluate_answer(
-                question_text=question.question_text,
-                answer_key=question.answer_key,
-                user_answer=user_answer,
-                difficulty=session.difficulty,
-            )
-        except Exception:
-            evaluation = _keyword_evaluate(question.answer_key, user_answer)
+        _, correct_index = _generate_choices(question, session.difficulty, session_key)
+        is_correct = int(selected_index) == correct_index
 
+        result = "correct" if is_correct else "incorrect"
         points = POINTS_MAP.get(session.difficulty, 10)
-        score_ratio = float(evaluation.get("score_ratio", 0))
-        score_earned = round(points * score_ratio)
+        score_earned = points if is_correct else 0
+        correct_text = _answer_text(question.answer_key)
+        feedback = "정답입니다! 정확히 알고 계셨네요." if is_correct else f"오답입니다. 정답을 확인하고 개념을 다시 복습해보세요."
 
         answer = QuizAnswer.objects.create(
             session=session,
             question=question,
-            user_answer=user_answer,
-            result=evaluation.get("result", "incorrect"),
+            user_answer=str(selected_index),
+            result=result,
             score_earned=score_earned,
-            ai_feedback=evaluation.get("feedback", ""),
+            ai_feedback=feedback,
         )
 
         session.score += score_earned
@@ -104,8 +86,8 @@ class SubmitAnswerView(APIView):
         return Response({
             "result": answer.result,
             "score_earned": score_earned,
-            "feedback": evaluation.get("feedback", ""),
-            "model_answer": evaluation.get("model_answer", ""),
+            "feedback": feedback,
+            "model_answer": correct_text,
             "session_score": session.score,
         })
 
@@ -168,9 +150,11 @@ class StartQuizFromDBView(APIView):
         if count not in [5, 10, 15]:
             return Response({"error": "count must be 5, 10, or 15"}, status=400)
 
-        questions = list(
-            Question.objects.filter(category=category, difficulty=difficulty, source="preset")
-        )
+        qs = Question.objects.filter(difficulty=difficulty, source="preset")
+        if category != "mixed":
+            qs = qs.filter(category=category)
+
+        questions = list(qs)
 
         if len(questions) < count:
             return Response(
@@ -192,9 +176,23 @@ class StartQuizFromDBView(APIView):
             mode="db",
         )
 
+        questions_data = []
+        for q in selected:
+            choices, correct_index = _generate_choices(q, difficulty, session.session_key)
+            questions_data.append({
+                "id": q.id,
+                "category": q.category,
+                "difficulty": q.difficulty,
+                "question_text": q.question_text,
+                "hint": q.hint,
+                "code_snippet": q.code_snippet,
+                "choices": choices,
+                "correct_index": correct_index,
+            })
+
         return Response({
             "session_key": session.session_key,
-            "questions": QuestionSerializer(selected, many=True).data,
+            "questions": questions_data,
             "max_score": session.max_score,
         }, status=201)
 
@@ -207,7 +205,7 @@ class DBQuestionCountView(APIView):
         difficulty = request.query_params.get("difficulty")
 
         qs = Question.objects.filter(source="preset")
-        if category:
+        if category and category != "mixed":
             qs = qs.filter(category=category)
         if difficulty:
             qs = qs.filter(difficulty=difficulty)
