@@ -12,28 +12,39 @@ POINTS_MAP = {"easy": 10, "medium": 20, "hard": 30}
 
 
 def _keyword_evaluate(answer_key: str, user_answer: str) -> dict:
+    import re
     keywords = [k.strip() for k in answer_key.split("|||") if k.strip()]
     if not keywords:
         return {"result": "incorrect", "score_ratio": 0.0, "feedback": "채점 기준이 없습니다.", "model_answer": answer_key}
 
     answer_lower = user_answer.lower()
-    matched = [k for k in keywords if k.lower() in answer_lower]
+
+    def _keyword_hit(keyword: str) -> bool:
+        if keyword.lower() in answer_lower:
+            return True
+        tokens = [t for t in re.split(r"[\s,.()+\-/|:]+", keyword.lower()) if len(t) >= 2]
+        if not tokens:
+            return False
+        hits = sum(1 for t in tokens if t in answer_lower)
+        return hits / len(tokens) >= 0.5
+
+    matched = [k for k in keywords if _keyword_hit(k)]
+    missed = [k for k in keywords if not _keyword_hit(k)]
     ratio = len(matched) / len(keywords)
 
-    if ratio >= 0.8:
+    if ratio >= 0.7:
         result = "correct"
-    elif ratio >= 0.4:
+    elif ratio >= 0.35:
         result = "partial"
     else:
         result = "incorrect"
 
-    missed = [k for k in keywords if k not in matched]
     feedback_parts = []
     if matched:
         feedback_parts.append(f"언급한 핵심 포인트: {', '.join(matched)}")
     if missed:
-        feedback_parts.append(f"누락된 핵심 포인트: {', '.join(missed)}")
-    feedback_parts.append("(AI 평가 서비스 일시 불가 — 키워드 기반 채점이 적용되었습니다)")
+        feedback_parts.append(f"보완할 포인트: {', '.join(missed)}")
+    feedback_parts.append("(AI 평가 서비스 일시 불가 — 키워드 기반 채점)")
 
     return {
         "result": result,
