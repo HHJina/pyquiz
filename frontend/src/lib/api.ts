@@ -7,6 +7,26 @@ const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+export async function startQuizFromDB(
+  category: string,
+  difficulty: string,
+  count: number
+): Promise<GenerateResponse> {
+  const { data } = await api.post("/api/quiz/start/", { category, difficulty, count });
+  return data;
+}
+
+export async function getDBQuestionCount(
+  category?: string,
+  difficulty?: string
+): Promise<number> {
+  const params: Record<string, string> = {};
+  if (category) params.category = category;
+  if (difficulty) params.difficulty = difficulty;
+  const { data } = await api.get("/api/quiz/db-count/", { params });
+  return data.count;
+}
+
 export async function generateQuestions(
   category: string,
   difficulty: string,

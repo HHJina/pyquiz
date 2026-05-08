@@ -1,5 +1,6 @@
-export type Category = "basics" | "oop" | "algorithms" | "advanced" | "practical" | "mixed";
+export type Category = "basics" | "oop" | "algorithms" | "advanced" | "practical" | "docker" | "git" | "mixed";
 export type Difficulty = "easy" | "medium" | "hard";
+export type QuizMode = "ai" | "db";
 export type QuizResult = "correct" | "partial" | "incorrect";
 
 export interface Question {
@@ -43,6 +44,7 @@ export interface QuizState {
   history: AnswerHistory[];
   category: Category;
   difficulty: Difficulty;
+  mode: QuizMode;
 }
 
 export interface LeaderboardEntry {
@@ -62,6 +64,8 @@ export const CATEGORY_META: Record<Category, { label: string; icon: string; desc
   algorithms: { label: "자료구조/알고리즘", icon: "⚡", desc: "리스트, 정렬, 복잡도" },
   advanced:   { label: "고급 Python",      icon: "🔬", desc: "데코레이터, 제너레이터" },
   practical:  { label: "실무/면접",        icon: "💼", desc: "GIL, 메모리, 최적화" },
+  docker:     { label: "Docker",           icon: "🐳", desc: "컨테이너, Compose, 배포" },
+  git:        { label: "Git",              icon: "🌿", desc: "버전 관리, 브랜치 전략" },
   mixed:      { label: "랜덤 믹스",        icon: "🎲", desc: "전체 범위 랜덤" },
 };
 
