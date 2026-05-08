@@ -1,11 +1,10 @@
 import json
-import google.generativeai as genai
+from google import genai
 from django.conf import settings
 
 
-def get_gemini_model():
-    genai.configure(api_key=settings.GEMINI_API_KEY)
-    return genai.GenerativeModel("gemini-1.5-flash")
+def get_gemini_client():
+    return genai.Client(api_key=settings.GEMINI_API_KEY)
 
 
 CATEGORY_NAMES = {
@@ -25,7 +24,7 @@ DIFFICULTY_NAMES = {
 
 
 def generate_questions(category: str, difficulty: str, count: int) -> list[dict]:
-    model = get_gemini_model()
+    client = get_gemini_client()
     cat_desc = CATEGORY_NAMES.get(category, category)
     diff_desc = DIFFICULTY_NAMES.get(difficulty, difficulty)
 
@@ -50,7 +49,7 @@ def generate_questions(category: str, difficulty: str, count: int) -> list[dict]
 - code_snippet은 질문에 코드 분석/설명이 필요한 경우만 포함
 - 모든 내용은 한국어로"""
 
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
     text = response.text.strip()
     if text.startswith("```"):
         text = text.split("```")[1]
@@ -60,7 +59,7 @@ def generate_questions(category: str, difficulty: str, count: int) -> list[dict]
 
 
 def evaluate_answer(question_text: str, answer_key: str, user_answer: str, difficulty: str) -> dict:
-    model = get_gemini_model()
+    client = get_gemini_client()
     diff_desc = DIFFICULTY_NAMES.get(difficulty, difficulty)
 
     prompt = f"""당신은 Python 기술 면접 평가관입니다. 아래 답변을 평가하세요.
@@ -84,7 +83,7 @@ def evaluate_answer(question_text: str, answer_key: str, user_answer: str, diffi
 - incorrect (0.0): 핵심 포인트 40% 미만 또는 틀린 내용
 - 답변이 너무 짧거나 "모르겠다"는 incorrect 처리"""
 
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
     text = response.text.strip()
     if text.startswith("```"):
         text = text.split("```")[1]
