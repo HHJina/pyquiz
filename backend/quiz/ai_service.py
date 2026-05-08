@@ -49,7 +49,7 @@ def generate_questions(category: str, difficulty: str, count: int) -> list[dict]
 - code_snippet은 질문에 코드 분석/설명이 필요한 경우만 포함
 - 모든 내용은 한국어로"""
 
-    response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+    response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
     text = response.text.strip()
     if text.startswith("```"):
         text = text.split("```")[1]
@@ -83,7 +83,7 @@ def evaluate_answer(question_text: str, answer_key: str, user_answer: str, diffi
 - incorrect (0.0): 핵심 포인트 40% 미만 또는 틀린 내용
 - 답변이 너무 짧거나 "모르겠다"는 incorrect 처리"""
 
-    response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+    response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
     text = response.text.strip()
     if text.startswith("```"):
         text = text.split("```")[1]
